@@ -1,0 +1,4 @@
+/dts-v1/;
+
+/include/ "zynq-IND2-base.dtsi"
+/include/ "zynq-IND.dtsi"

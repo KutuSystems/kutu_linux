@@ -1,0 +1,45 @@
+/ {
+	fpga_axi: fpga-axi {
+		compatible = "simple-bus";
+		#address-cells = <0x1>;
+		#size-cells = <0x1>;
+		ranges;
+
+
+		axi4_IND_controller_0: axi4_IND_controller@43c00000 {
+			compatible = "kutu,axi4-IND-controller-1.00-a";
+		   reg = <0x43c00000 0x10000>;
+			#clock-cells = <0>;
+			clocks = <&clkc 16>;
+		   interrupt-parent = <&intc>;
+			interrupts = <0 59 4>;
+		   xlnx,dphase-timeout = <0x8>;
+			xlnx,s-axi-min-size = <0x00003FFF>;
+		   xlnx,slv-awidth = <0x20>;
+		   xlnx,slv-dwidth = <0x20>;
+			xlnx,sys-addr-width = <0xe>;
+		   xlnx,use-wstrb = <0x0>;
+	   };
+
+      axi_uart2: axi_uart0: serial@43c10000 {
+			clock-frequency = <100000000>;
+			compatible = "xlnx,axi-uart16550-1.01.a", "xlnx,xps-uart16550-2.00.a", "ns16550";
+			current-speed = <9600>;
+			device_type = "serial";
+			interrupt-parent = <&intc>;
+			interrupts = < 0 58 4>;
+			reg = < 0x43c10000 0x10000 >;
+			reg-offset = <0x1000>;
+			reg-shift = <2>;
+			xlnx,external-xin-clk-hz = <0x5F5E100>;
+			xlnx,family = "zynq";
+			xlnx,has-external-rclk = <0x0>;
+			xlnx,has-external-xin = <0x0>;
+			xlnx,is-a-16550 = <0x1>;
+			xlnx,s-axi-aclk-freq-hz = <0x5F5E100>;
+			xlnx,use-modem-ports = <0x0>;
+			xlnx,use-user-ports = <0x0>;
+		};
+
+   };
+};

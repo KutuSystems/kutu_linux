@@ -382,6 +382,56 @@ config XILINX_DEVCFG
 	  This option enables support for the Xilinx device configuration driver.
 	  If unsure, say N
 
+
+config ad7193_UART
+	tristate "ad7193 & UART support"
+	depends on ARCH_ZYNQ || MICROBLAZE || COMPILE_TEST
+	depends on HAS_IOMEM
+	select GENERIC_IRQ_CHIP
+	help
+	  Choose this if you have a ad7193_UART system.
+
+config HAWK_FOS
+	tristate "Hawk FOS support"
+	depends on ARCH_ZYNQ || COMPILE_TEST
+	depends on HAS_IOMEM
+	select GENERIC_IRQ_CHIP
+	help
+	  Choose this if you have a Hawk FOS system.
+
+config GR1000
+	tristate "GPSat GR1000 support"
+	depends on ARCH_ZYNQ || COMPILE_TEST
+	depends on HAS_IOMEM
+	select GENERIC_IRQ_CHIP
+	help
+	  Choose this if you have a GR1000 system.
+
+config IND
+	tristate "SEPL IND support"
+	depends on ARCH_ZYNQ || COMPILE_TEST
+	depends on HAS_IOMEM
+	select GENERIC_IRQ_CHIP
+	help
+	  Choose this if you have a SEPL IND system.
+
+config LSI_CAPTURE
+	tristate "LSI_CAPTURE support"
+	depends on ARCH_ZYNQ || COMPILE_TEST
+	depends on HAS_IOMEM
+	select GENERIC_IRQ_CHIP
+	help
+	  Choose this if you have a LSI CAPTURE system.
+
+config LXS_SWIFT
+	tristate "LXS_SWIFT support"
+	depends on ARCH_ZYNQ || COMPILE_TEST
+	depends on HAS_IOMEM
+	select GENERIC_IRQ_CHIP
+	help
+	  Choose this if you have a LXS SWIFT system.
+
+
 config R3964
 	tristate "Siemens R3964 line discipline"
 	depends on TTY
@@ -602,4 +652,3 @@ config AXI_INTR_MONITOR
 	depends on HAS_IOMEM
 
 endmenu
-

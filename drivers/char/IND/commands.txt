@@ -1,0 +1,58 @@
+User IOCTL commands for IND
+
+IND_USER_RESET:
+
+if arg = FPGA_RESET then put fgpa in reset, if arg = anything else then release from reset.
+
+IND_USER_SET_MODE:
+
+arg = IND_cmd_struct
+
+structure has 4 arguments.
+
+config -> configuration constnats.  For normal operation is 0, for various test modes use other bits.
+address -> initial DMA address.  This is an offset address within 128Mbyte block, normally start with 0.
+capture_count -> number of ADC samples to capture. must be multiple of 4. Total number of samples captured is this value * 3
+delay_count -> number of ADC samples to ignore during capture. Must be multiple of 4.  Allow enough time for selector
+to settle.
+
+IND_USER_SET_ADDRESS:
+
+arg = dma write address.  Update this after every scan.
+
+IND_USER_DMA_TEST:
+
+arg = transfer size
+This is a loopback test for transferring DMA data.
+
+IND_USER_TRIG_PPS:
+
+trigger a dma_capture when in PPS debug mode.
+
+IND_USER_SPI_WRITE:
+
+write to SPI port
+
+IND_USER_STATUS:
+
+return status word
+
+IND_USER_SET_LEDS:
+
+Set user LEDS
+
+IND_USER_CLEAR_LEDS:
+
+Clear user LEDS
+
+IND_USER_GET_SEM:
+
+read back interrupt semaphore
+
+IND_USER_SET_SEM:
+
+set user semaphore
+
+IND_USER_REG_DEBUG:
+
+access to all registers for debug
