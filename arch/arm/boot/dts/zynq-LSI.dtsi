@@ -1,0 +1,24 @@
+/ {
+	fpga_axi: fpga-axi@0 {
+		compatible = "simple-bus";
+		#address-cells = <0x1>;
+		#size-cells = <0x1>;
+		ranges;
+
+		axi4_LSI_controller_0: axi4_LSI_controller@43c00000 {
+			compatible = "kutu,axi4-LSI-controller-1.00-a";
+		   reg = <0x43c00000 0x30000>;
+			#clock-cells = <0>;
+			clocks = <&clkc 16>;
+		   interrupt-parent = <&intc>;
+			interrupts = <0 59 4>;
+		   xlnx,dphase-timeout = <0x8>;
+			xlnx,s-axi-min-size = <0x00003FFF>;
+		   xlnx,slv-awidth = <0x20>;
+		   xlnx,slv-dwidth = <0x20>;
+			xlnx,sys-addr-width = <0xe>;
+		   xlnx,use-wstrb = <0x0>;
+	   };
+
+   };
+};
