@@ -12,7 +12,7 @@
  * GNU General Public License for more details.
  */
 /dts-v1/;
-#include "zynq-7000.dtsi"
+/include/ "zynq-7000.dtsi"
 
 / {
 	model = "Zynq ZYBO Development Board";
@@ -31,8 +31,9 @@
 	};
 
 	chosen {
-		bootargs = "";
-		stdout-path = "serial0:115200n8";
+//		bootargs = "console=ttyPS0,115200 root=/dev/ram rw initrd=0x1100000,33M ip=:::::eth0:dhcp earlyprintk";
+		bootargs = "console=ttyPS0,115200 root=/dev/mmcblk0p2 rw earlyprintk rootfstype=ext4 rootwait";
+		linux,stdout-path = "/amba@0/uart@E0001000";
 	};
 
 	usb_phy0: phy0 {

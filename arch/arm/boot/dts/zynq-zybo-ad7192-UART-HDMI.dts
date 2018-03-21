@@ -5,10 +5,10 @@
  * (C) Copyright 2007-2013 Xilinx, Inc.
  * (C) Copyright 2007-2013 Michal Simek
  * (C) Copyright 2007-2012 PetaLogix Qld Pty Ltd
- * (C) Copyright 2014 Digilent, Inc. 
+ * (C) Copyright 2014 Digilent, Inc.
  *
  * Michal SIMEK <monstr@monstr.eu>
- * Tinghui Wang <steven.wang@digilentinc.com> 
+ * Tinghui Wang <steven.wang@digilentinc.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -64,7 +64,7 @@
 			reg = <0x1>;
 		} ;
 	} ;
-	pmu {
+	pmu@f8891000 {
 		compatible = "arm,cortex-a9-pmu";
 		interrupt-parent = <&ps7_scugic_0>;
 		interrupts = <0 5 4>, <0 6 4>;
@@ -77,7 +77,7 @@
 	} ;
 
 
-	ps7_axi_interconnect_0: amba@0 {
+	ps7_axi_interconnect_0: amba {
 		#address-cells = <0x1>;
 		#size-cells = <0x1>;
 		compatible = "xlnx,ps7-axi-interconnect-1.00.a", "simple-bus";
@@ -92,7 +92,7 @@
 			reg = <0x43000000 0x1000>;
 			xlnx,include-sg = <0x0>;
 			xlnx,num-fstores = <0x3>;
-			dma-channel@43000000 {
+			dma-channel {
 				compatible = "xlnx,axi-vdma-mm2s-channel";
 				interrupt-parent = <&ps7_scugic_0>;
 				interrupts = <0 59 0x4>;
@@ -102,7 +102,7 @@
 				xlnx,include-dre = <0x0>;
 			};
 		};
-		
+
 		axi_hdmi: axi-dispctrl-hdmi-tx@43c00000 {
 			compatible = "ant,axi-dispctrl-hdmi-tx";
 			reg = <0x43c00000 0x10000>;
@@ -375,14 +375,14 @@
 			reg = <0xf8007100 0x20>;
 		};
 
-		UART_ADC@0x43C20000{
+		UART_ADC@43c20000{
 			compatible = "par,axi-ad7193-uart-controller-1.00-a";
-			reg = < 0x43C20000 0x10000 >;
+			reg = <0x43c20000 0x10000>;
 			interrupts = < 0 57 0 >;
         		interrupt-parent = <&ps7_scugic_0>;
-		 }; 
+		 };
 
 
 	};
-        
+
 } ;
