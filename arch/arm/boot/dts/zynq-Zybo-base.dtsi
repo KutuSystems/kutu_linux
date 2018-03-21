@@ -146,7 +146,6 @@
 
 &gem0 {
 	phy-handle = <&phy0>;
-   compatible = "xlnx,ps7-ethernet-1.00.a";
 	status = "okay";
 	phy-mode = "rgmii-id";
 
@@ -168,7 +167,7 @@
 	primary_flash: ps7-qspi@0 {
 		#address-cells = <1>;
 		#size-cells = <1>;
-		compatible = "n25q128a11";
+		compatible = "n25fl128s";
 		reg = <0x0>;
 		spi-tx-bus-width = <1>;
 		spi-rx-bus-width = <4>;
