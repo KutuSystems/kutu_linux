@@ -857,9 +857,9 @@ u32 ad9361_validate_rf_bw(struct ad9361_rf_phy *phy, u32 bw)
 {
 	switch(spi_get_device_id(phy->spi)->driver_data) {
 	case ID_AD9363A:
-		return clamp_t(u32, bw, 0, 20000000UL);
+		return clamp_t(u32, bw, 200000UL, 20000000UL);
 	default:
-		return clamp_t(u32, bw, 0, 56000000UL);
+		return clamp_t(u32, bw, 200000UL, 56000000UL);
 	}
 }
 
@@ -1027,6 +1027,15 @@ int ad9361_bist_loopback(struct ad9361_rf_phy *phy, unsigned mode)
 }
 EXPORT_SYMBOL(ad9361_bist_loopback);
 
+int ad9361_write_bist_reg(struct ad9361_rf_phy *phy, u32 val)
+{
+	if (!phy)
+		return -EINVAL;
+	phy->bist_config = val;
+	return ad9361_spi_write(phy->spi, REG_BIST_CONFIG, val);
+}
+EXPORT_SYMBOL(ad9361_write_bist_reg);
+
 int ad9361_bist_prbs(struct ad9361_rf_phy *phy, enum ad9361_bist_mode mode)
 {
 	u32 reg = 0;
@@ -1045,9 +1054,7 @@ int ad9361_bist_prbs(struct ad9361_rf_phy *phy, enum ad9361_bist_mode mode)
 		break;
 	};
 
-	phy->bist_config = reg;
-
-	return ad9361_spi_write(phy->spi, REG_BIST_CONFIG, reg);
+	return ad9361_write_bist_reg(phy, reg);
 }
 EXPORT_SYMBOL(ad9361_bist_prbs);
 
@@ -1090,9 +1097,7 @@ static int ad9361_bist_tone(struct ad9361_rf_phy *phy,
 	reg1 = ((mask << 2) & reg_mask);
 	ad9361_spi_write(phy->spi, REG_BIST_AND_DATA_PORT_TEST_CONFIG, reg1);
 
-	phy->bist_config = reg;
-
-	return ad9361_spi_write(phy->spi, REG_BIST_CONFIG, reg);
+	return ad9361_write_bist_reg(phy, reg);
 }
 
 static int ad9361_check_cal_done(struct ad9361_rf_phy *phy, u32 reg,
@@ -1865,7 +1870,7 @@ static int ad9361_gc_update(struct ad9361_rf_phy *phy)
 	 * ClkRF in MHz, delay in us
 	 */
 
-	reg = (200 * delay_lna) / 2 + (14000000UL / (clkrf / 500U));
+	reg = (200 + delay_lna) / 2 + (14000000UL / (clkrf / 500U));
 	reg = DIV_ROUND_UP(reg, 1000UL) +
 		phy->pdata->gain_ctrl.agc_attack_delay_extra_margin_us;
 	reg = clamp_t(u8, reg, 0U, 31U);
@@ -2058,6 +2063,8 @@ static int ad9361_rx_adc_setup(struct ad9361_rf_phy *phy, unsigned long bbpll_fr
 	u32 i;
 	int ret;
 
+	/* Following registers are set implicitly by the RX BB analog filter calibration */
+
 	u8 c3_msb = ad9361_spi_read(phy->spi, REG_RX_BBF_C3_MSB);
 	u8 c3_lsb = ad9361_spi_read(phy->spi, REG_RX_BBF_C3_LSB);
 	u8 r2346 = ad9361_spi_read(phy->spi, REG_RX_BBF_R2346);
@@ -2197,6 +2204,8 @@ static int ad9361_rx_tia_calib(struct ad9361_rf_phy *phy, unsigned long bb_bw_Hz
 {
 	unsigned long Cbbf, R2346;
 	u64 CTIA_fF;
+
+	/* Following registers are set implicitly by the RX BB analog filter calibration */
 
 	u8 reg1EB = ad9361_spi_read(phy->spi, REG_RX_BBF_C3_MSB);
 	u8 reg1EC = ad9361_spi_read(phy->spi, REG_RX_BBF_C3_LSB);
@@ -3247,8 +3256,9 @@ static int ad9361_gc_setup(struct ad9361_rf_phy *phy, struct gain_control *ctrl)
 		SMALL_ADC_OVERLOAD_EXED_COUNTER(ctrl->adc_small_overload_exceed_counter);
 	ad9361_spi_write(spi, REG_ADC_OVERLOAD_COUNTERS, reg);
 
-	ad9361_spi_writef(spi, REG_GAIN_STP_CONFIG_2, LARGE_LPF_GAIN_STEP(~0),
-			 LARGE_LPF_GAIN_STEP(ctrl->adc_large_overload_inc_steps));
+	reg = DECREMENT_STP_SIZE_FOR_SMALL_LPF_GAIN_CHANGE(ctrl->f_agc_large_overload_inc_steps) |
+		LARGE_LPF_GAIN_STEP(ctrl->adc_large_overload_inc_steps);
+	ad9361_spi_write(spi, REG_GAIN_STP_CONFIG_2, reg);
 
 	reg = LARGE_LMT_OVERLOAD_EXED_COUNTER(ctrl->lmt_overload_large_exceed_counter) |
 		SMALL_LMT_OVERLOAD_EXED_COUNTER(ctrl->lmt_overload_small_exceed_counter);
@@ -3448,10 +3458,10 @@ static int ad9361_auxdac_set(struct ad9361_rf_phy *phy, unsigned dac,
 		val_mV = 306;
 
 	if (val_mV < 1888) {
-		val = ((val_mV - 306) * 1000) / 1404; /* Vref = 1V, Step = 2 */
+		val = ((val_mV - 306) * 1000) / 1469; /* Vref = 1V, Step = 2 */
 		tmp = AUXDAC_1_VREF(0);
 	} else {
-		val = ((val_mV - 1761) * 1000) / 1836; /* Vref = 2.5V, Step = 2 */
+		val = ((val_mV - 1761) * 1000) / 1512; /* Vref = 2.5V, Step = 2 */
 		tmp = AUXDAC_1_VREF(3);
 	}
 
@@ -4672,6 +4682,14 @@ static int ad9361_setup(struct ad9361_rf_phy *phy)
 		}
 	}
 
+	ret = ad9361_auxdac_setup(phy, &pd->auxdac_ctrl);
+	if (ret < 0)
+		return ret;
+
+	ret = ad9361_gpo_setup(phy, &pd->gpo_ctrl);
+	if (ret < 0)
+		return ret;
+
 	if (pd->port_ctrl.pp_conf[2] & FDD_RX_RATE_2TX_RATE)
 		phy->rx_eq_2tx = true;
 
@@ -4739,10 +4757,6 @@ static int ad9361_setup(struct ad9361_rf_phy *phy)
 	if (ret < 0)
 		return ret;
 
-	ret = ad9361_auxdac_setup(phy, &pd->auxdac_ctrl);
-	if (ret < 0)
-		return ret;
-
 	bbpll_freq = clk_get_rate(phy->clks[BBPLL_CLK]);
 
 	ret = ad9361_auxadc_setup(phy, &pd->auxadc_ctrl, bbpll_freq);
@@ -4750,10 +4764,6 @@ static int ad9361_setup(struct ad9361_rf_phy *phy)
 		return ret;
 
 	ret = ad9361_ctrl_outs_setup(phy, &pd->ctrl_outs_ctrl);
-	if (ret < 0)
-		return ret;
-
-	ret = ad9361_gpo_setup(phy, &pd->gpo_ctrl);
 	if (ret < 0)
 		return ret;
 
@@ -6157,14 +6167,15 @@ static int ad9361_rx_rfpll_rate_change(struct notifier_block *nb,
 	struct clk_notifier_data *cnd = data;
 	struct ad9361_rf_phy *phy =
 		container_of(nb, struct ad9361_rf_phy, clk_nb_rx);
+	u64 new_rate;
 
 
 	if (flags == POST_RATE_CHANGE) {
+		new_rate = ad9361_from_clk(cnd->new_rate);
 		dev_dbg(&phy->spi->dev, "%s: rate %llu Hz", __func__,
-			ad9361_from_clk(cnd->new_rate));
+			new_rate);
 		if (cnd->new_rate)
-			ad9361_load_gt(phy, ad9361_from_clk(cnd->new_rate),
-				       GT_RX1 + GT_RX2);
+			ad9361_load_gt(phy, new_rate, GT_RX1 + GT_RX2);
 	}
 
 	return NOTIFY_OK;
@@ -6176,21 +6187,23 @@ static int ad9361_tx_rfpll_rate_change(struct notifier_block *nb,
 	struct clk_notifier_data *cnd = data;
 	struct ad9361_rf_phy *phy =
 		container_of(nb, struct ad9361_rf_phy, clk_nb_tx);
+	u64 new_rate;
 
 	if (flags == POST_RATE_CHANGE) {
+		new_rate = ad9361_from_clk(cnd->new_rate);
 		dev_dbg(&phy->spi->dev, "%s: rate %llu Hz", __func__,
-			ad9361_from_clk(cnd->new_rate));
+			new_rate);
 		/* For RX LO we typically have the tracking option enabled
 		* so for now do nothing here.
 		*/
 		if (phy->auto_cal_en)
-			if (abs(phy->last_tx_quad_cal_freq - ad9361_from_clk(cnd->new_rate)) >
+			if (abs(phy->last_tx_quad_cal_freq - new_rate) >
 				phy->cal_threshold_freq) {
 
 				set_bit(0, &phy->flags);
 				reinit_completion(&phy->complete);
 				schedule_work(&phy->work);
-				phy->last_tx_quad_cal_freq = ad9361_from_clk(cnd->new_rate);
+				phy->last_tx_quad_cal_freq = new_rate;
 			}
 	}
 
@@ -8425,7 +8438,7 @@ static struct ad9361_phy_platform_data
 	ad9361_of_get_u32(iodev, np, "adi,agc-adc-large-overload-exceed-counter", 10,
 			  &pdata->gain_ctrl.adc_large_overload_exceed_counter);
 	ad9361_of_get_u32(iodev, np, "adi,agc-adc-large-overload-inc-steps", 2,
-			  &pdata->gain_ctrl.adc_large_overload_inc_steps);
+			  &pdata->gain_ctrl.adc_large_overload_inc_steps); /* Name is misleading should be dec-steps */
 	ad9361_of_get_bool(iodev, np, "adi,agc-adc-lmt-small-overload-prevent-gain-inc-enable",
 			   &pdata->gain_ctrl.adc_lmt_small_overload_prevent_gain_inc);
 	ad9361_of_get_u32(iodev, np, "adi,agc-lmt-overload-large-exceed-counter", 10,
@@ -8512,6 +8525,9 @@ static struct ad9361_phy_platform_data
 			&pdata->gain_ctrl.f_agc_rst_gla_if_en_agc_pulled_high_mode); /* 0x0FB, 0x111 */
 	ad9361_of_get_u32(iodev, np, "adi,fagc-power-measurement-duration-in-state5", 64,
 			&pdata->gain_ctrl.f_agc_power_measurement_duration_in_state5); /* 0x109, 0x10a RX samples 0..524288 */
+
+	ad9361_of_get_u32(iodev, np, "adi,fagc-adc-large-overload-inc-steps", 2, /* 0x106 [D6:D4] 0..7 */
+			&pdata->gain_ctrl.f_agc_large_overload_inc_steps); /* Name is misleading should be dec-steps */
 
 	/* RSSI Control */
 
@@ -8690,8 +8706,8 @@ static struct ad9361_phy_platform_data
 	return pdata;
 }
 #else
-static
-struct ad9361_phy_platform_data *ad9361_phy_parse_dt(struct device *dev)
+static inline struct ad9361_phy_platform_data
+	*ad9361_phy_parse_dt(struct iio_dev *iodev, struct device *dev)
 {
 	return NULL;
 }
