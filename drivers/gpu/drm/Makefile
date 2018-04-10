@@ -70,6 +70,7 @@ obj-$(CONFIG_DRM_RCAR_DU) += rcar-du/
 obj-$(CONFIG_DRM_SHMOBILE) +=shmobile/
 obj-$(CONFIG_DRM_ADI_AXI_HDMI) += adi_axi_hdmi/
 obj-$(CONFIG_DRM_AXI_DISPCTRL) += axi_dispctrl/
+obj-$(CONFIG_DRM_AXI_KUTU_HDMI) += axi_kutu_hdmi/
 obj-y			+= omapdrm/
 obj-$(CONFIG_DRM_SUN4I) += sun4i/
 obj-y			+= tilcdc/
