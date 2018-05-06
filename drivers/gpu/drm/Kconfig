@@ -164,7 +164,7 @@ source "drivers/gpu/drm/adi_axi_hdmi/Kconfig"
 
 source "drivers/gpu/drm/axi_dispctrl/Kconfig"
 
-source "drivers/gpu/drm/axi_kutu_hdmi/Kconfig"
+source "drivers/gpu/drm/kutu_hdmi/Kconfig"
 
 source "drivers/gpu/drm/exynos/Kconfig"
 

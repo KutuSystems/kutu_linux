@@ -20,13 +20,13 @@ struct xlnx_pcm_dma_params {
 	int chan_id;
 };
 
-struct axi_hdmi_encoder;
+struct kutu_hdmi_encoder;
 
-struct axi_hdmi_private {
+struct kutu_hdmi_private {
 	struct drm_device *drm_dev;
 	struct drm_fbdev_cma *fbdev;
 	struct drm_crtc *crtc;
-	struct axi_hdmi_encoder *encoder;
+	struct kutu_hdmi_encoder *encoder;
 	struct i2c_client *encoder_slave;
 
 	void __iomem *base;
@@ -39,7 +39,7 @@ struct axi_hdmi_private {
 	bool is_rgb;
 };
 
-struct drm_crtc* axi_hdmi_crtc_create(struct drm_device *dev);
-struct drm_encoder *axi_hdmi_encoder_create(struct drm_device *dev);
+struct drm_crtc* kutu_hdmi_crtc_create(struct drm_device *dev);
+struct drm_encoder *kutu_hdmi_encoder_create(struct drm_device *dev);
 
 #endif

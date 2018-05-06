@@ -24,13 +24,12 @@
 				xlnx,include-dre = <0x0>;
 			};
 		};
-
-		axi_hdmi: axi-dispctrl-hdmi-tx@43c00000 {
-			compatible = "ant,axi-dispctrl-hdmi-tx";
-			reg = <0x43c00000 0x10000>;
-			dmas = <&axi_vdma_0 0>;
-			dma-names = "video";
-		};
-
    };
+
+	hdmi_display: hdmi-display {
+		compatible = "kutu,hdmi-display";
+		dmas = <&axi_vdma_0 0>;
+		dma-names = "video";
+	};
+
 };

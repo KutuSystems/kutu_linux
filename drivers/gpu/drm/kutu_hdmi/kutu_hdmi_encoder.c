@@ -21,7 +21,7 @@
 #include <drm/drm_encoder_slave.h>
 #include <drm/drm_edid.h>
 
-#include "axi_hdmi_drv.h"
+#include "kutu_hdmi_drv.h"
 
 #include "../i2c/adv7511.h"
 
@@ -58,7 +58,7 @@
 #define AXI_HDMI_SOURCE_SEL_NORMAL		0x1
 #define AXI_HDMI_SOURCE_SEL_NONE		0x0
 
-static const struct debugfs_reg32 axi_hdmi_encoder_debugfs_regs[] = {
+static const struct debugfs_reg32 kutu_hdmi_encoder_debugfs_regs[] = {
 	{ "Reset", AXI_HDMI_REG_RESET },
 	{ "Control", AXI_HDMI_REG_CTRL },
 	{ "Source select", AXI_HDMI_REG_SOURCE_SEL },
@@ -80,7 +80,7 @@ static const uint16_t adv7511_csc_ycbcr_to_rgb[] = {
 	0x0000, 0x04ad, 0x087c, 0x1b77,
 };
 
-struct axi_hdmi_encoder {
+struct kutu_hdmi_encoder {
 	struct drm_encoder_slave encoder;
 	struct drm_connector connector;
 
@@ -89,18 +89,18 @@ struct axi_hdmi_encoder {
 #endif
 };
 
-static inline struct axi_hdmi_encoder *to_axi_hdmi_encoder(struct drm_encoder *enc)
+static inline struct kutu_hdmi_encoder *to_kutu_hdmi_encoder(struct drm_encoder *enc)
 {
-	return container_of(enc, struct axi_hdmi_encoder, encoder.base);
+	return container_of(enc, struct kutu_hdmi_encoder, encoder.base);
 }
 
 static inline struct drm_encoder *connector_to_encoder(struct drm_connector *connector)
 {
-	struct axi_hdmi_encoder *enc = container_of(connector, struct axi_hdmi_encoder, connector);
+	struct kutu_hdmi_encoder *enc = container_of(connector, struct kutu_hdmi_encoder, connector);
 	return &enc->encoder.base;
 }
 
-static int axi_hdmi_connector_init(struct drm_device *dev,
+static int kutu_hdmi_connector_init(struct drm_device *dev,
 	struct drm_connector *connector, struct drm_encoder *encoder);
 
 static const struct drm_encoder_slave_funcs *get_slave_funcs(
@@ -114,35 +114,35 @@ static const struct drm_encoder_slave_funcs *get_slave_funcs(
 
 #ifdef CONFIG_DEBUG_FS
 
-static int axi_hdmi_debugfs_cp_get(void *data, u64 *val)
+static int kutu_hdmi_debugfs_cp_get(void *data, u64 *val)
 {
-	struct axi_hdmi_private *private = data;
+	struct kutu_hdmi_private *private = data;
 	*val = readl(private->base + AXI_HDMI_REG_COLORPATTERN);
 	return 0;
 }
 
-static int axi_hdmi_debugfs_cp_set(void *data, u64 val)
+static int kutu_hdmi_debugfs_cp_set(void *data, u64 val)
 {
-	struct axi_hdmi_private *private = data;
+	struct kutu_hdmi_private *private = data;
 
 	writel(val, private->base + AXI_HDMI_REG_COLORPATTERN);
 
 	return 0;
 }
-DEFINE_SIMPLE_ATTRIBUTE(axi_hdmi_cp_fops, axi_hdmi_debugfs_cp_get,
-	axi_hdmi_debugfs_cp_set, "0x%06llx\n");
+DEFINE_SIMPLE_ATTRIBUTE(kutu_hdmi_cp_fops, kutu_hdmi_debugfs_cp_get,
+	kutu_hdmi_debugfs_cp_set, "0x%06llx\n");
 
-static const char * const axi_hdmi_mode_text[] = {
+static const char * const kutu_hdmi_mode_text[] = {
 	[AXI_HDMI_SOURCE_SEL_NONE] = "none",
 	[AXI_HDMI_SOURCE_SEL_NORMAL] = "normal",
 	[AXI_HDMI_SOURCE_SEL_TESTPATTERN] = "testpattern",
 	[AXI_HDMI_SOURCE_SEL_COLORPATTERN] = "colorpattern",
 };
 
-static ssize_t axi_hdmi_read_mode(struct file *file, char __user *userbuf,
+static ssize_t kutu_hdmi_read_mode(struct file *file, char __user *userbuf,
 	size_t count, loff_t *ppos)
 {
-	struct axi_hdmi_private *private = file->private_data;
+	struct kutu_hdmi_private *private = file->private_data;
 	uint32_t src;
 	const char *fmt;
 	size_t len = 0;
@@ -151,13 +151,13 @@ static ssize_t axi_hdmi_read_mode(struct file *file, char __user *userbuf,
 
 	src = readl(private->base + AXI_HDMI_REG_SOURCE_SEL);
 
-	for (i = 0; i < ARRAY_SIZE(axi_hdmi_mode_text); i++) {
+	for (i = 0; i < ARRAY_SIZE(kutu_hdmi_mode_text); i++) {
 		if (src == i)
 			fmt = "[%s] ";
 		else
 			fmt = "%s ";
 		len += scnprintf(buf + len, sizeof(buf) - len, fmt,
-				axi_hdmi_mode_text[i]);
+				kutu_hdmi_mode_text[i]);
 	}
 
 	buf[len - 1] = '\n';
@@ -165,10 +165,10 @@ static ssize_t axi_hdmi_read_mode(struct file *file, char __user *userbuf,
 	return simple_read_from_buffer(userbuf, count, ppos, buf, len);
 }
 
-static ssize_t axi_hdmi_set_mode(struct file *file, const char __user *userbuf,
+static ssize_t kutu_hdmi_set_mode(struct file *file, const char __user *userbuf,
 	size_t count, loff_t *ppos)
 {
-	struct axi_hdmi_private *private = file->private_data;
+	struct kutu_hdmi_private *private = file->private_data;
 	char buf[20];
 	unsigned int ctrl;
 	unsigned int i;
@@ -179,12 +179,12 @@ static ssize_t axi_hdmi_set_mode(struct file *file, const char __user *userbuf,
 
 	buf[count] = '\0';
 
-	for (i = 0; i < ARRAY_SIZE(axi_hdmi_mode_text); i++) {
-		if (sysfs_streq(axi_hdmi_mode_text[i], buf))
+	for (i = 0; i < ARRAY_SIZE(kutu_hdmi_mode_text); i++) {
+		if (sysfs_streq(kutu_hdmi_mode_text[i], buf))
 			break;
 	}
 
-	if (i == ARRAY_SIZE(axi_hdmi_mode_text))
+	if (i == ARRAY_SIZE(kutu_hdmi_mode_text))
 		return -EINVAL;
 
 	writel(i, private->base + AXI_HDMI_REG_SOURCE_SEL);
@@ -204,38 +204,38 @@ static ssize_t axi_hdmi_set_mode(struct file *file, const char __user *userbuf,
 	return count;
 }
 
-static const struct file_operations axi_hdmi_mode_fops = {
+static const struct file_operations kutu_hdmi_mode_fops = {
 	.open = simple_open,
-	.read = axi_hdmi_read_mode,
-	.write = axi_hdmi_set_mode,
+	.read = kutu_hdmi_read_mode,
+	.write = kutu_hdmi_set_mode,
 };
 
-static void axi_hdmi_debugfs_init(struct axi_hdmi_encoder *encoder)
+static void kutu_hdmi_debugfs_init(struct kutu_hdmi_encoder *encoder)
 {
-	struct axi_hdmi_private *priv = encoder->encoder.base.dev->dev_private;
+	struct kutu_hdmi_private *priv = encoder->encoder.base.dev->dev_private;
 
 	encoder->regset.base = priv->base;
-	encoder->regset.regs = axi_hdmi_encoder_debugfs_regs;
-	encoder->regset.nregs = ARRAY_SIZE(axi_hdmi_encoder_debugfs_regs);
+	encoder->regset.regs = kutu_hdmi_encoder_debugfs_regs;
+	encoder->regset.nregs = ARRAY_SIZE(kutu_hdmi_encoder_debugfs_regs);
 
 	debugfs_create_regset32(dev_name(encoder->encoder.base.dev->dev), S_IRUGO, NULL, &encoder->regset);
-	debugfs_create_file("color_pattern", 0600, NULL, priv, &axi_hdmi_cp_fops);
-	debugfs_create_file("mode", 0600, NULL, priv, &axi_hdmi_mode_fops);
+	debugfs_create_file("color_pattern", 0600, NULL, priv, &kutu_hdmi_cp_fops);
+	debugfs_create_file("mode", 0600, NULL, priv, &kutu_hdmi_mode_fops);
 }
 
 #else
 
-static inline void axi_hdmi_debugfs_init(struct axi_hdmi_encoder *enc)
+static inline void kutu_hdmi_debugfs_init(struct kutu_hdmi_encoder *enc)
 {
 }
 
 #endif
 
-static void axi_hdmi_encoder_enable(struct drm_encoder *encoder)
+static void kutu_hdmi_encoder_enable(struct drm_encoder *encoder)
 {
-	struct axi_hdmi_encoder *axi_hdmi_encoder = to_axi_hdmi_encoder(encoder);
+	struct kutu_hdmi_encoder *kutu_hdmi_encoder = to_kutu_hdmi_encoder(encoder);
 	struct drm_connector *connector;
-	struct axi_hdmi_private *private = encoder->dev->dev_private;
+	struct kutu_hdmi_private *private = encoder->dev->dev_private;
 	const struct drm_encoder_slave_funcs *sfuncs = get_slave_funcs(encoder);
 	struct adv7511_video_config config;
 	struct edid *edid;
@@ -249,7 +249,7 @@ static void axi_hdmi_encoder_enable(struct drm_encoder *encoder)
 	if (!sfuncs)
 		return;
 
-	connector = &axi_hdmi_encoder->connector;
+	connector = &kutu_hdmi_encoder->connector;
 	edid = drm_connector_get_edid(connector);
 
 	if (edid)
@@ -285,9 +285,9 @@ static void axi_hdmi_encoder_enable(struct drm_encoder *encoder)
 		sfuncs->dpms(encoder, DRM_MODE_DPMS_ON);
 }
 
-static void axi_hdmi_encoder_disable(struct drm_encoder *encoder)
+static void kutu_hdmi_encoder_disable(struct drm_encoder *encoder)
 {
-	struct axi_hdmi_private *private = encoder->dev->dev_private;
+	struct kutu_hdmi_private *private = encoder->dev->dev_private;
 	const struct drm_encoder_slave_funcs *sfuncs = get_slave_funcs(encoder);
 
 	writel(0, private->base + AXI_HDMI_REG_RESET);
@@ -300,12 +300,12 @@ static void axi_hdmi_encoder_disable(struct drm_encoder *encoder)
 		sfuncs->dpms(encoder, DRM_MODE_DPMS_OFF);
 }
 
-static void axi_hdmi_encoder_mode_set(struct drm_encoder *encoder,
+static void kutu_hdmi_encoder_mode_set(struct drm_encoder *encoder,
 	struct drm_crtc_state *crtc_state,
 	struct drm_connector_state *conn_state)
 {
 	const struct drm_encoder_slave_funcs *sfuncs = get_slave_funcs(encoder);
-	struct axi_hdmi_private *private = encoder->dev->dev_private;
+	struct kutu_hdmi_private *private = encoder->dev->dev_private;
 	struct drm_display_mode *mode = &crtc_state->mode;
 	unsigned int h_de_min, h_de_max;
 	unsigned int v_de_min, v_de_max;
@@ -336,47 +336,47 @@ static void axi_hdmi_encoder_mode_set(struct drm_encoder *encoder,
 	clk_set_rate(private->hdmi_clock, mode->clock * 1000);
 }
 
-static const struct drm_encoder_helper_funcs axi_hdmi_encoder_helper_funcs = {
-	.enable = axi_hdmi_encoder_enable,
-	.disable = axi_hdmi_encoder_disable,
-	.atomic_mode_set = axi_hdmi_encoder_mode_set,
+static const struct drm_encoder_helper_funcs kutu_hdmi_encoder_helper_funcs = {
+	.enable = kutu_hdmi_encoder_enable,
+	.disable = kutu_hdmi_encoder_disable,
+	.atomic_mode_set = kutu_hdmi_encoder_mode_set,
 };
 
-static void axi_hdmi_encoder_destroy(struct drm_encoder *encoder)
+static void kutu_hdmi_encoder_destroy(struct drm_encoder *encoder)
 {
 	const struct drm_encoder_slave_funcs *sfuncs = get_slave_funcs(encoder);
-	struct axi_hdmi_encoder *axi_hdmi_encoder =
-		to_axi_hdmi_encoder(encoder);
+	struct kutu_hdmi_encoder *kutu_hdmi_encoder =
+		to_kutu_hdmi_encoder(encoder);
 
 	if (sfuncs && sfuncs->destroy)
 		sfuncs->destroy(encoder);
 
 	drm_encoder_cleanup(encoder);
-	kfree(axi_hdmi_encoder);
+	kfree(kutu_hdmi_encoder);
 }
 
-static const struct drm_encoder_funcs axi_hdmi_encoder_funcs = {
-	.destroy = axi_hdmi_encoder_destroy,
+static const struct drm_encoder_funcs kutu_hdmi_encoder_funcs = {
+	.destroy = kutu_hdmi_encoder_destroy,
 };
 
-struct drm_encoder *axi_hdmi_encoder_create(struct drm_device *dev)
+struct drm_encoder *kutu_hdmi_encoder_create(struct drm_device *dev)
 {
 	struct drm_encoder *encoder;
-	struct axi_hdmi_encoder *axi_hdmi_encoder;
-	struct axi_hdmi_private *priv = dev->dev_private;
+	struct kutu_hdmi_encoder *kutu_hdmi_encoder;
+	struct kutu_hdmi_private *priv = dev->dev_private;
 	struct drm_bridge *bridge;
 	int ret;
 
-	axi_hdmi_encoder = kzalloc(sizeof(*axi_hdmi_encoder), GFP_KERNEL);
-	if (!axi_hdmi_encoder)
+	kutu_hdmi_encoder = kzalloc(sizeof(*kutu_hdmi_encoder), GFP_KERNEL);
+	if (!kutu_hdmi_encoder)
 		return NULL;
 
-	encoder = &axi_hdmi_encoder->encoder.base;
+	encoder = &kutu_hdmi_encoder->encoder.base;
 	encoder->possible_crtcs = 1;
 
-	drm_encoder_init(dev, encoder, &axi_hdmi_encoder_funcs,
+	drm_encoder_init(dev, encoder, &kutu_hdmi_encoder_funcs,
 			DRM_MODE_ENCODER_TMDS, NULL);
-	drm_encoder_helper_add(encoder, &axi_hdmi_encoder_helper_funcs);
+	drm_encoder_helper_add(encoder, &kutu_hdmi_encoder_helper_funcs);
 
 	bridge = of_drm_find_bridge(priv->encoder_slave->dev.of_node);
 	if (bridge) {
@@ -393,14 +393,14 @@ struct drm_encoder *axi_hdmi_encoder_create(struct drm_device *dev)
 
 		/* For backwards compatibility, drop it eventually. */
 		encoder_drv = to_drm_i2c_encoder_driver(to_i2c_driver(priv->encoder_slave->dev.driver));
-		encoder_drv->encoder_init(priv->encoder_slave, dev, &axi_hdmi_encoder->encoder);
+		encoder_drv->encoder_init(priv->encoder_slave, dev, &kutu_hdmi_encoder->encoder);
 
-		connector = &axi_hdmi_encoder->connector;
-		axi_hdmi_connector_init(dev, connector, encoder);
+		connector = &kutu_hdmi_encoder->connector;
+		kutu_hdmi_connector_init(dev, connector, encoder);
 	}
 
 
-	axi_hdmi_debugfs_init(axi_hdmi_encoder);
+	kutu_hdmi_debugfs_init(kutu_hdmi_encoder);
 
 	writel(AXI_HDMI_SOURCE_SEL_NORMAL, priv->base + AXI_HDMI_REG_SOURCE_SEL);
 	if (priv->is_rgb)
@@ -409,7 +409,7 @@ struct drm_encoder *axi_hdmi_encoder_create(struct drm_device *dev)
 	return encoder;
 }
 
-static int axi_hdmi_connector_get_modes(struct drm_connector *connector)
+static int kutu_hdmi_connector_get_modes(struct drm_connector *connector)
 {
 	struct drm_encoder *encoder = connector_to_encoder(connector);
 	const struct drm_encoder_slave_funcs *sfuncs = get_slave_funcs(encoder);
@@ -421,7 +421,7 @@ static int axi_hdmi_connector_get_modes(struct drm_connector *connector)
 	return count;
 }
 
-static int axi_hdmi_connector_mode_valid(struct drm_connector *connector,
+static int kutu_hdmi_connector_mode_valid(struct drm_connector *connector,
 	struct drm_display_mode *mode)
 {
 	if (mode->clock > 165000)
@@ -433,18 +433,18 @@ static int axi_hdmi_connector_mode_valid(struct drm_connector *connector,
 	return MODE_OK;
 }
 
-static struct drm_encoder *axi_hdmi_best_encoder(struct drm_connector *connector)
+static struct drm_encoder *kutu_hdmi_best_encoder(struct drm_connector *connector)
 {
 	return connector_to_encoder(connector);
 }
 
-static struct drm_connector_helper_funcs axi_hdmi_connector_helper_funcs = {
-	.get_modes	= axi_hdmi_connector_get_modes,
-	.mode_valid	= axi_hdmi_connector_mode_valid,
-	.best_encoder	= axi_hdmi_best_encoder,
+static struct drm_connector_helper_funcs kutu_hdmi_connector_helper_funcs = {
+	.get_modes	= kutu_hdmi_connector_get_modes,
+	.mode_valid	= kutu_hdmi_connector_mode_valid,
+	.best_encoder	= kutu_hdmi_best_encoder,
 };
 
-static enum drm_connector_status axi_hdmi_connector_detect(
+static enum drm_connector_status kutu_hdmi_connector_detect(
 	struct drm_connector *connector, bool force)
 {
 	enum drm_connector_status status = connector_status_unknown;
@@ -457,23 +457,23 @@ static enum drm_connector_status axi_hdmi_connector_detect(
 	return status;
 }
 
-static void axi_hdmi_connector_destroy(struct drm_connector *connector)
+static void kutu_hdmi_connector_destroy(struct drm_connector *connector)
 {
 	drm_connector_unregister(connector);
 	drm_connector_cleanup(connector);
 }
 
-static struct drm_connector_funcs axi_hdmi_connector_funcs = {
+static struct drm_connector_funcs kutu_hdmi_connector_funcs = {
 	.dpms = drm_atomic_helper_connector_dpms,
 	.fill_modes = drm_helper_probe_single_connector_modes,
-	.detect = axi_hdmi_connector_detect,
-	.destroy = axi_hdmi_connector_destroy,
+	.detect = kutu_hdmi_connector_detect,
+	.destroy = kutu_hdmi_connector_destroy,
 	.reset = drm_atomic_helper_connector_reset,
 	.atomic_duplicate_state = drm_atomic_helper_connector_duplicate_state,
 	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
 };
 
-static int axi_hdmi_connector_init(struct drm_device *dev,
+static int kutu_hdmi_connector_init(struct drm_device *dev,
 	struct drm_connector *connector, struct drm_encoder *encoder)
 {
 	int type;
@@ -483,8 +483,8 @@ static int axi_hdmi_connector_init(struct drm_device *dev,
 	connector->polled = DRM_CONNECTOR_POLL_CONNECT |
 				DRM_CONNECTOR_POLL_DISCONNECT;
 
-	drm_connector_init(dev, connector, &axi_hdmi_connector_funcs, type);
-	drm_connector_helper_add(connector, &axi_hdmi_connector_helper_funcs);
+	drm_connector_init(dev, connector, &kutu_hdmi_connector_funcs, type);
+	drm_connector_helper_add(connector, &kutu_hdmi_connector_helper_funcs);
 
 	err = drm_connector_register(connector);
 	if (err)

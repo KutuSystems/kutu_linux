@@ -1,4 +1,4 @@
-config DRM_AXI_KUTU_HDMI
+config DRM_KUTU_HDMI
 	tristate "DRM Support for Kutu HDMI FPGA platforms"
 	depends on DRM
 	default	n
