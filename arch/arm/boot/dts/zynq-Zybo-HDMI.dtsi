@@ -6,7 +6,7 @@
 		ranges;
 
 		axi_vdma_0: axivdma@43000000 {
-			compatible = "xlnx,axi-vdma";
+			compatible = "xlnx,axi-vdma-1.00.a";
 			#address-cells = <1>;
 			#size-cells = <1>;
 			#dma-cells = <1>;
