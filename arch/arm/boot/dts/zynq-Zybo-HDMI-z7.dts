@@ -1,4 +1,4 @@
 /dts-v1/;
 
-/include/ "zynq-Zybo-base.dtsi"
+/include/ "zynq-Zybo-base-z7.dtsi"
 /include/ "zynq-Zybo-HDMI.dtsi"
