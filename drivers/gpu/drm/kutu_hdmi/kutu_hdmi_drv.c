@@ -63,6 +63,9 @@ static int kutu_hdmi_load(struct drm_device *dev, unsigned long flags)
 	struct drm_encoder *encoder;
 	int ret;
 
+
+   pr_err("started kutu_hdmi_load\n");
+
 	private->drm_dev = dev;
 
 	dev->dev_private = private;
@@ -72,14 +75,18 @@ static int kutu_hdmi_load(struct drm_device *dev, unsigned long flags)
 	private->crtc = kutu_hdmi_crtc_create(dev);
 	if (IS_ERR(private->crtc)) {
 		ret = PTR_ERR(private->crtc);
+      pr_err("kutu_hdmi_crtc_create failed\n");
 		goto err_crtc;
 	}
+   pr_err("kutu_hdmi_crtc_create succeeded\n");
 
 	encoder = kutu_hdmi_encoder_create(dev);
 	if (IS_ERR(encoder)) {
 	    ret = PTR_ERR(encoder);
+       pr_err("kutu_hdmi_encoder_create failed\n");
 	    goto err_crtc;
 	}
+   pr_err("kutu_hdmi_encoder_create succeeded\n");
 
 	drm_mode_config_reset(dev);
 
@@ -92,6 +99,8 @@ static int kutu_hdmi_load(struct drm_device *dev, unsigned long flags)
 
 	/* init kms poll for handling hpd */
 	drm_kms_helper_poll_init(dev);
+
+   pr_err("kutu_hdmi_load succeeded\n");
 
 	return 0;
 
@@ -158,8 +167,6 @@ static int kutu_hdmi_platform_probe(struct platform_device *pdev)
 	const struct of_device_id *id;
 	struct device_node *np = pdev->dev.of_node;
 	struct kutu_hdmi_private *private;
-	struct device_node *slave_node, *ep_node;
-	struct of_endpoint ep;
 	struct resource *res;
 	int ret;
 
@@ -167,53 +174,43 @@ static int kutu_hdmi_platform_probe(struct platform_device *pdev)
 	if (!private)
 		return -ENOMEM;
 
+   pr_err("Started kutu_hdmi probe\n");
+
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	private->base = devm_ioremap_resource(&pdev->dev, res);
-	if (IS_ERR(private->base))
-		return PTR_ERR(private->base);
+	if (IS_ERR(private->base)) {
+      private->base = 0;
+      pr_err("kutu hdmi no base address\n");
+	//	return PTR_ERR(private->base);
+   }
 
 	private->hdmi_clock = devm_clk_get(&pdev->dev, NULL);
 	if (IS_ERR(private->hdmi_clock)) {
-		return -EPROBE_DEFER;
+      pr_err("kutu hdmi failed clock probe\n");
+	//	return -EPROBE_DEFER;
 	}
 
-	ep_node = of_graph_get_next_endpoint(np, NULL);
-	if (ep_node) {
-		ret = of_graph_parse_endpoint(ep_node, &ep);
-		if (ret) {
-			of_node_put(ep_node);
-			return ret;
-		}
-		if (ep.port != 0 && ep.id != 0) {
-			of_node_put(ep_node);
-			return -EINVAL;
-		}
-		slave_node = of_graph_get_remote_port_parent(ep_node);
-		of_node_put(ep_node);
-	} else {
-		slave_node = of_parse_phandle(np, "encoder-slave", 0);
-	}
+   pr_err("kutu_hdmi probe stage 2\n");
 
-	if (!slave_node)
-		return -EINVAL;
+   private->is_rgb = of_property_read_bool(np, "adi,is-rgb");
 
-	private->is_rgb = of_property_read_bool(np, "adi,is-rgb");
-
-	id = of_match_node(kutu_hdmi_encoder_of_match, np);
-
-	private->encoder_slave = of_find_i2c_device_by_node(slave_node);
-	of_node_put(slave_node);
-
-	if (!private->encoder_slave || !private->encoder_slave->dev.driver)
-		return -EPROBE_DEFER;
+   id = of_match_node(kutu_hdmi_encoder_of_match, np);
 
 	private->dma = dma_request_slave_channel(&pdev->dev, "video");
-	if (private->dma == NULL)
+	if (private->dma == NULL) {
+      pr_err("kutu_hdmi dma failed\n");
 		return -EPROBE_DEFER;
+   } else {
+      pr_err("kutu_hdmi dma succeeded\n");
+   }
 
 	platform_set_drvdata(pdev, private);
 
-	return drm_platform_init(&kutu_hdmi_driver, pdev);
+	ret = drm_platform_init(&kutu_hdmi_driver, pdev);
+
+   pr_err("kutu_hdmi finshed probe call\n");
+
+   return ret;
 }
 
 static int kutu_hdmi_platform_remove(struct platform_device *pdev)
@@ -227,7 +224,7 @@ static int kutu_hdmi_platform_remove(struct platform_device *pdev)
 
 static struct platform_driver kutu_hdmi_encoder_driver = {
 	.driver = {
-		.name = "axi-kutu-hdmi",
+		.name = "kutu-hdmi",
 		.owner = THIS_MODULE,
 		.of_match_table = kutu_hdmi_encoder_of_match,
 	},

@@ -27,7 +27,7 @@ struct kutu_hdmi_private {
 	struct drm_fbdev_cma *fbdev;
 	struct drm_crtc *crtc;
 	struct kutu_hdmi_encoder *encoder;
-	struct i2c_client *encoder_slave;
+//	struct i2c_client *encoder_slave;
 
 	void __iomem *base;
 

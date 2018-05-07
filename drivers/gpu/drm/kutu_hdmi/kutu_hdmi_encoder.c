@@ -112,124 +112,6 @@ static const struct drm_encoder_slave_funcs *get_slave_funcs(
 	return to_encoder_slave(enc)->slave_funcs;
 }
 
-#ifdef CONFIG_DEBUG_FS
-
-static int kutu_hdmi_debugfs_cp_get(void *data, u64 *val)
-{
-	struct kutu_hdmi_private *private = data;
-	*val = readl(private->base + AXI_HDMI_REG_COLORPATTERN);
-	return 0;
-}
-
-static int kutu_hdmi_debugfs_cp_set(void *data, u64 val)
-{
-	struct kutu_hdmi_private *private = data;
-
-	writel(val, private->base + AXI_HDMI_REG_COLORPATTERN);
-
-	return 0;
-}
-DEFINE_SIMPLE_ATTRIBUTE(kutu_hdmi_cp_fops, kutu_hdmi_debugfs_cp_get,
-	kutu_hdmi_debugfs_cp_set, "0x%06llx\n");
-
-static const char * const kutu_hdmi_mode_text[] = {
-	[AXI_HDMI_SOURCE_SEL_NONE] = "none",
-	[AXI_HDMI_SOURCE_SEL_NORMAL] = "normal",
-	[AXI_HDMI_SOURCE_SEL_TESTPATTERN] = "testpattern",
-	[AXI_HDMI_SOURCE_SEL_COLORPATTERN] = "colorpattern",
-};
-
-static ssize_t kutu_hdmi_read_mode(struct file *file, char __user *userbuf,
-	size_t count, loff_t *ppos)
-{
-	struct kutu_hdmi_private *private = file->private_data;
-	uint32_t src;
-	const char *fmt;
-	size_t len = 0;
-	char buf[50];
-	int i;
-
-	src = readl(private->base + AXI_HDMI_REG_SOURCE_SEL);
-
-	for (i = 0; i < ARRAY_SIZE(kutu_hdmi_mode_text); i++) {
-		if (src == i)
-			fmt = "[%s] ";
-		else
-			fmt = "%s ";
-		len += scnprintf(buf + len, sizeof(buf) - len, fmt,
-				kutu_hdmi_mode_text[i]);
-	}
-
-	buf[len - 1] = '\n';
-
-	return simple_read_from_buffer(userbuf, count, ppos, buf, len);
-}
-
-static ssize_t kutu_hdmi_set_mode(struct file *file, const char __user *userbuf,
-	size_t count, loff_t *ppos)
-{
-	struct kutu_hdmi_private *private = file->private_data;
-	char buf[20];
-	unsigned int ctrl;
-	unsigned int i;
-
-	count = min_t(size_t, count, sizeof(buf) - 1);
-	if (copy_from_user(buf, userbuf, count))
-		return -EFAULT;
-
-	buf[count] = '\0';
-
-	for (i = 0; i < ARRAY_SIZE(kutu_hdmi_mode_text); i++) {
-		if (sysfs_streq(kutu_hdmi_mode_text[i], buf))
-			break;
-	}
-
-	if (i == ARRAY_SIZE(kutu_hdmi_mode_text))
-		return -EINVAL;
-
-	writel(i, private->base + AXI_HDMI_REG_SOURCE_SEL);
-
-	if (i == AXI_HDMI_SOURCE_SEL_TESTPATTERN) {
-		ctrl = AXI_HDMI_CTRL_CSC_BYPASS | AXI_HDMI_CTRL_SS_BYPASS |
-			AXI_HDMI_CTRL_FULL_RANGE;
-	} else {
-		if (private->is_rgb)
-			ctrl = AXI_HDMI_CTRL_CSC_BYPASS;
-		else
-			ctrl = 0;
-	}
-
-	writel(ctrl, private->base + AXI_HDMI_REG_CTRL);
-
-	return count;
-}
-
-static const struct file_operations kutu_hdmi_mode_fops = {
-	.open = simple_open,
-	.read = kutu_hdmi_read_mode,
-	.write = kutu_hdmi_set_mode,
-};
-
-static void kutu_hdmi_debugfs_init(struct kutu_hdmi_encoder *encoder)
-{
-	struct kutu_hdmi_private *priv = encoder->encoder.base.dev->dev_private;
-
-	encoder->regset.base = priv->base;
-	encoder->regset.regs = kutu_hdmi_encoder_debugfs_regs;
-	encoder->regset.nregs = ARRAY_SIZE(kutu_hdmi_encoder_debugfs_regs);
-
-	debugfs_create_regset32(dev_name(encoder->encoder.base.dev->dev), S_IRUGO, NULL, &encoder->regset);
-	debugfs_create_file("color_pattern", 0600, NULL, priv, &kutu_hdmi_cp_fops);
-	debugfs_create_file("mode", 0600, NULL, priv, &kutu_hdmi_mode_fops);
-}
-
-#else
-
-static inline void kutu_hdmi_debugfs_init(struct kutu_hdmi_encoder *enc)
-{
-}
-
-#endif
 
 static void kutu_hdmi_encoder_enable(struct drm_encoder *encoder)
 {
@@ -361,52 +243,26 @@ static const struct drm_encoder_funcs kutu_hdmi_encoder_funcs = {
 
 struct drm_encoder *kutu_hdmi_encoder_create(struct drm_device *dev)
 {
-	struct drm_encoder *encoder;
-	struct kutu_hdmi_encoder *kutu_hdmi_encoder;
-	struct kutu_hdmi_private *priv = dev->dev_private;
-	struct drm_bridge *bridge;
-	int ret;
+   struct drm_encoder *encoder;
+   struct kutu_hdmi_encoder *kutu_hdmi_encoder;
+   struct drm_connector *connector;
 
-	kutu_hdmi_encoder = kzalloc(sizeof(*kutu_hdmi_encoder), GFP_KERNEL);
-	if (!kutu_hdmi_encoder)
-		return NULL;
+   kutu_hdmi_encoder = kzalloc(sizeof(*kutu_hdmi_encoder), GFP_KERNEL);
+   if (!kutu_hdmi_encoder)
+      return NULL;
 
-	encoder = &kutu_hdmi_encoder->encoder.base;
-	encoder->possible_crtcs = 1;
+   pr_err("kutu_hdmi_encoder_create alloc succeeded\n");
 
-	drm_encoder_init(dev, encoder, &kutu_hdmi_encoder_funcs,
-			DRM_MODE_ENCODER_TMDS, NULL);
-	drm_encoder_helper_add(encoder, &kutu_hdmi_encoder_helper_funcs);
+   encoder = &kutu_hdmi_encoder->encoder.base;
+   encoder->possible_crtcs = 1;
 
-	bridge = of_drm_find_bridge(priv->encoder_slave->dev.of_node);
-	if (bridge) {
-		bridge->encoder = encoder;
-		encoder->bridge = bridge;
-		ret = drm_bridge_attach(dev, bridge);
-		if (ret) {
-		    drm_encoder_cleanup(encoder);
-		    return NULL;
-		}
-	} else {
-		struct drm_connector *connector;
-		struct drm_i2c_encoder_driver *encoder_drv;
+   drm_encoder_init(dev, encoder, &kutu_hdmi_encoder_funcs, DRM_MODE_ENCODER_TMDS, NULL);
+   drm_encoder_helper_add(encoder, &kutu_hdmi_encoder_helper_funcs);
 
-		/* For backwards compatibility, drop it eventually. */
-		encoder_drv = to_drm_i2c_encoder_driver(to_i2c_driver(priv->encoder_slave->dev.driver));
-		encoder_drv->encoder_init(priv->encoder_slave, dev, &kutu_hdmi_encoder->encoder);
+   connector = &kutu_hdmi_encoder->connector;
+   kutu_hdmi_connector_init(dev, connector, encoder);
 
-		connector = &kutu_hdmi_encoder->connector;
-		kutu_hdmi_connector_init(dev, connector, encoder);
-	}
-
-
-	kutu_hdmi_debugfs_init(kutu_hdmi_encoder);
-
-	writel(AXI_HDMI_SOURCE_SEL_NORMAL, priv->base + AXI_HDMI_REG_SOURCE_SEL);
-	if (priv->is_rgb)
-		writel(AXI_HDMI_CTRL_CSC_BYPASS, priv->base + AXI_HDMI_REG_CTRL);
-
-	return encoder;
+   return encoder;
 }
 
 static int kutu_hdmi_connector_get_modes(struct drm_connector *connector)
@@ -480,8 +336,8 @@ static int kutu_hdmi_connector_init(struct drm_device *dev,
 	int err;
 
 	type = DRM_MODE_CONNECTOR_HDMIA;
-	connector->polled = DRM_CONNECTOR_POLL_CONNECT |
-				DRM_CONNECTOR_POLL_DISCONNECT;
+
+	connector->polled = DRM_CONNECTOR_POLL_CONNECT | DRM_CONNECTOR_POLL_DISCONNECT;
 
 	drm_connector_init(dev, connector, &kutu_hdmi_connector_funcs, type);
 	drm_connector_helper_add(connector, &kutu_hdmi_connector_helper_funcs);
