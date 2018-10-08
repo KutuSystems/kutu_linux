@@ -1,7 +1,6 @@
 /*
  * Wrapper Driver used to control a two-channel Xilinx DMA Engine
  */
-#include <linux/dmaengine.h>
 
 #include <linux/module.h>
 #include <linux/version.h>
@@ -17,23 +16,28 @@
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <linux/poll.h>
-
-#include <asm/uaccess.h>
 #include <linux/dma-mapping.h>
-#include <xen/page.h>
-
-#include <linux/slab.h>
 #include <linux/platform_device.h>
+#include <linux/time.h>
 
 #include "IND.h"
 #include "IND_system.h"
 
 #define DRIVER_NAME "IND"
-//#define DRIVER_NAME "IND_pdrv"
 #define MODULE_NAME "IND"
 #define IND_DEVICES 1
 
+#define USE_DMA_ALLOC_COHERENT		0	/* 0 => asynchronous, 1 => synchronous  */
+#define USE_DMA_ALLOC_NONCOHERENT	1	/* 0 => synchronous,  1 => asynchronous */
+#define USE_DMA_MAPPING_SINGLE		0
+#define USE_PGPROT_CACHED		1
+
 LIST_HEAD( IND_full_dev_list );
+
+/*
+ * Static global variables
+ */
+// static DECLARE_WAIT_QUEUE_HEAD(irq_wait_queue);
 
 /* static struct IND_drvdata *get_elem_from_list_by_inode(struct inode *i)
 {
@@ -61,9 +65,9 @@ static int IND_open(struct inode *i, struct file *filp)
 
    atomic_set(&IND->irq_count, 0);
 
-   init_waitqueue_head(&IND->irq_wait_queue);
+   //init_waitqueue_head(&IND->irq_wait_queue);
 
-   printk(KERN_DEBUG "<%s> file: open()\n", MODULE_NAME);
+//   printk(KERN_DEBUG "<%s> file: open()\n", MODULE_NAME);
    filp->private_data = IND;
    return 0;
 }
@@ -77,7 +81,7 @@ static int IND_release(struct inode *i, struct file *f)
 //   IND_write_reg(IND, R_INTERRUPT_ADDR, K_DISABLE_INTERRUPT);
 //   IND_write_reg(IND, R_MODE_CONFIG_ADDR, MODE_PPS_DEBUG);
 
-   printk(KERN_DEBUG "<%s> file: close()\n", MODULE_NAME);
+//   printk(KERN_DEBUG "<%s> file: close()\n", MODULE_NAME);
    return 0;
 }
 
@@ -101,7 +105,13 @@ static int IND_mmap(struct file *filp, struct vm_area_struct *vma)
       return -EAGAIN;
    }
 
+#if ! USE_PGPROT_CACHED
    vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+#else
+   vma->vm_page_prot = __pgprot_modify(vma->vm_page_prot,
+		                       L_PTE_MT_MASK,
+                                       L_PTE_MT_WRITEALLOC | L_PTE_XN);
+#endif
 
    result = remap_pfn_range(vma, vma->vm_start,IND->dma_handle >> PAGE_SHIFT, requested_size, vma->vm_page_prot);
 
@@ -136,14 +146,130 @@ static long IND_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
    //   int __user *ip = (int __user *)arg;
    void  *arg_ptr = (void *)arg;
    long  ret = 0;
-   unsigned int s2mm_status, timeout, val;
+   unsigned int s2mm_status;
+   unsigned int timeout;
+   unsigned int val;
+   unsigned int val2;
+   int i;
 //   struct IND_read_data_struct read_cmd;
    struct IND_debug_struct debug_cmd;
-   struct IND_cmd_struct user_cmd;
 
    //printk(KERN_DEBUG "<%s> ioctl: entered IND_ioctl\n", MODULE_NAME);
 
    switch (cmd) {
+      /*
+       * time critical IOCTLs first (assumes switch statement is executed in order).
+       */
+
+      case IND_USER_CAPTURE_INFO_0_GET:
+	      ret = IND_capture_info_get(IND, arg_ptr, 0);
+	      return ret;
+
+      case IND_USER_CAPTURE_INFO_1_GET:
+	      ret = IND_capture_info_get(IND, arg_ptr, 1);
+	      return ret;
+
+      case IND_USER_ADC_CLOCK_COUNT_PER_PPS:
+	      // Standard register logic used in FPGA to store clock counts per pps !!
+	      // Read multiple times to ensure not reading during an update.
+	      // Alternative solution is to use dual port RAM in FPGA to cross clock domains.
+	      val = IND_read_reg(IND, R_CLOCK_COUNT_PER_PPS_ADDR);
+	      for (i = 3; i > 0; i--) {
+		      val2 = IND_read_reg(IND, R_CLOCK_COUNT_PER_PPS_ADDR);
+		      if (val2 == val)
+			      break;
+		      val = val2;
+	      } // for
+	      if (i == 0)
+		      return -EFAULT;
+
+	      if (copy_to_user(arg_ptr, &val, sizeof(val)))
+		      return -EFAULT;
+
+	      return 0;
+
+      case IND_USER_READ_MAXMIN_NORMAL:
+         ret = IND_Maxmin_Read(IND, arg_ptr, R_IND_MAXMIN_NORMAL_BASE );
+         return ret;
+
+      case IND_USER_READ_MAXMIN_SQUARED:
+         ret = IND_Maxmin_Read(IND, arg_ptr, R_IND_MAXMIN_SQUARED_BASE );
+         return ret;
+
+      case IND_USER_STATUS:
+         val = IND_Status(IND);
+         if (copy_to_user(arg_ptr, &val, sizeof(val))) {
+            return -EFAULT;
+         }
+         return 0;
+
+      case IND_USER_SET_LEDS:
+         IND->led_status |= arg;
+         IND_write_reg(IND, R_GPIO_LED_ADDR, (IND->led_status));
+         return 0;
+
+      case IND_USER_CLEAR_LEDS:
+         IND->led_status &= ~arg;
+         IND_write_reg(IND, R_GPIO_LED_ADDR, (IND->led_status));
+         return 0;
+
+      case IND_USER_MODIFY_LEDS:
+      {
+         IND_bit_flag_t bit_flags;
+
+         if (copy_from_user(&bit_flags, arg_ptr, sizeof(bit_flags))) {
+            printk(KERN_DEBUG "IND_USER_MODIFY_LEDS: copy_from_user failed\n");
+            return -EFAULT;
+         }
+
+         IND->led_status |=  bit_flags.set;
+         IND->led_status &= ~bit_flags.clear;
+         IND->led_status ^=  bit_flags.toggle;
+
+         IND_write_reg(IND, R_GPIO_LED_ADDR, (IND->led_status));
+
+         return 0;
+      }
+
+      case IND_USER_SET_CTRL:
+         IND->ctrl_status |= arg;
+         IND_write_reg(IND, R_GPIO_CTRL_ADDR, (IND->ctrl_status));
+         return 0;
+
+      case IND_USER_CLEAR_CTRL:
+         IND->ctrl_status &= ~arg;
+         IND_write_reg(IND, R_GPIO_CTRL_ADDR, (IND->ctrl_status));
+         return 0;
+
+      case IND_USER_MODIFY_CTRL:
+      {
+         IND_bit_flag_t bit_flags;
+
+         if (copy_from_user(&bit_flags, arg_ptr, sizeof(bit_flags))) {
+            printk(KERN_DEBUG "IND_USER_MODIFY_CTRL: copy_from_user failed\n");
+            return -EFAULT;
+         }
+
+         IND->ctrl_status |=  bit_flags.set;
+         IND->ctrl_status &= ~bit_flags.clear;
+         IND->ctrl_status ^=  bit_flags.toggle;
+
+         IND_write_reg(IND, R_GPIO_CTRL_ADDR, (IND->ctrl_status));
+
+         return 0;
+      }
+
+      case IND_USER_GET_SEM:
+         val = (uint32_t)atomic_read(&IND->semaphore);
+         if (copy_to_user(arg_ptr, &val, sizeof(val))) {
+            return -EFAULT;
+         }
+         return 0;
+
+      case IND_USER_SET_SEM:
+         atomic_set(&IND->semaphore, arg);
+         return 0;
+
       case IND_USER_RESET:
          printk(KERN_DEBUG "IND_USER_RESET: Asserting FPGA_RESET bit\n");
          IND_write_reg(IND, R_MODE_CONFIG_ADDR, FPGA_RESET);
@@ -156,28 +282,26 @@ static long IND_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
          udelay(10);
 
          printk(KERN_DEBUG "IND_USER_RESET: FPGA Reset complete\n");
-
          return 0;
 
+      /*
+       * Non-time critical IOCTLs can go here.  Order is not significant.
+       */
+
       case IND_USER_DMA_RESET:
-         IND_write_reg(IND, R_MODE_CONFIG_ADDR, IND->config_state|DMA_RESET);
+         IND_write_reg(IND, R_MODE_CONFIG_ADDR, IND->config_state | DMA_RESET);
          udelay(10);
          IND_write_reg(IND, R_MODE_CONFIG_ADDR, IND->config_state);
          udelay(10);
-        return 0;
-
+         return 0;
 
        case IND_USER_SET_MODE:
-         if (copy_from_user(&user_cmd, arg_ptr, sizeof(user_cmd))) {
-            printk(KERN_DEBUG "IND_REG_DEBUG: copy failed\n");
-
-            return -EFAULT;
-         }
-         ret = IND_Set_User_Mode(IND, &user_cmd);
+         ret = IND_Set_User_Mode(IND, arg_ptr);
          return ret;
 
       case IND_USER_SET_ADDRESS:
          IND_write_reg(IND, R_DMA_WRITE_ADDR, (IND->dma_handle + arg));
+	 IND->bank = (arg == 0) ? 0 : 1;
          return 0;
 
       case IND_USER_DMA_TEST:
@@ -186,9 +310,9 @@ static long IND_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
             return -EFAULT;
 
          s2mm_status = IND_Status(IND);
-         if (s2mm_status & (BIT_S2MM_ERR|BIT_MM2S_ERR)) {
+         if (s2mm_status & (BIT_S2MM_ERR | BIT_MM2S_ERR)) {
             // DMA error so reset DMA
-            IND_write_reg(IND, R_MODE_CONFIG_ADDR, DMA_RESET|MODE_DMA_DEBUG);
+            IND_write_reg(IND, R_MODE_CONFIG_ADDR, DMA_RESET | MODE_DMA_DEBUG);
             IND_write_reg(IND, R_MODE_CONFIG_ADDR, MODE_DMA_DEBUG);
             printk(KERN_DEBUG "<%s> : clearing dma error\n",MODULE_NAME);
          }
@@ -208,7 +332,7 @@ static long IND_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
          IND_write_reg(IND, R_CAPTURE_COUNT_ADDR, (arg>>3));
 
          // start dma into loopback mode
-         IND_write_reg(IND, R_MODE_CONFIG_ADDR, (DMA_DEBUG_MODE|DEBUG_START_DMA));
+         IND_write_reg(IND, R_MODE_CONFIG_ADDR, (DMA_DEBUG_MODE | DEBUG_START_DMA));
 
          s2mm_status = IND_Status(IND);
          printk(KERN_DEBUG "<%s> : started dma, status = 0x%x\n",MODULE_NAME,s2mm_status);
@@ -233,10 +357,10 @@ static long IND_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
          return 0;
 
       case IND_USER_TRIG_PPS:
-         if ((arg != MODE_TRIGGER_PPS)&&(arg != GENERATE_PPS))
+         if ((arg != MODE_TRIGGER_PPS) && (arg != GENERATE_PPS))
             return -1;
 
-         IND_write_reg(IND, R_MODE_CONFIG_ADDR, (IND->config_state|arg));
+         IND_write_reg(IND, R_MODE_CONFIG_ADDR, (IND->config_state | arg));
 
          return ret;
 
@@ -244,71 +368,16 @@ static long IND_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
          ret = IND_SPI_Access(IND, arg_ptr);
          return ret;
 
-      case IND_USER_STATUS:
-         ret = IND_Status(IND);
-         if (copy_to_user(arg_ptr, &ret, sizeof(u32))) {
-            return -EFAULT;
-         }
-         return 0;
-
-      case IND_USER_SET_LEDS:
-         IND->led_status |= arg;
-         IND_write_reg(IND, R_GPIO_LED_ADDR, (IND->led_status));
-         return 0;
-
-      case IND_USER_CLEAR_LEDS:
-         IND->led_status &= ~arg;
-         IND_write_reg(IND, R_GPIO_LED_ADDR, (IND->led_status));
-         return 0;
-
-      case IND_USER_MODIFY_LEDS:
-      {
-         IND_bit_flag_t *bit_flags = arg_ptr;
-         IND->led_status |= bit_flags->set;
-         IND->led_status &= ~bit_flags->clear;
-         IND_write_reg(IND, R_GPIO_LED_ADDR, (IND->led_status));
-         return 0;
-      }
-      case IND_USER_SET_CTRL:
-         IND->ctrl_status |= arg;
-         IND_write_reg(IND, R_GPIO_CTRL_ADDR, (IND->ctrl_status));
-         return 0;
-
-      case IND_USER_CLEAR_CTRL:
-         IND->ctrl_status &= ~arg;
-         IND_write_reg(IND, R_GPIO_CTRL_ADDR, (IND->ctrl_status));
-         return 0;
-
-      case IND_USER_MODIFY_CTRL:
-      {
-         IND_bit_flag_t *bit_flags = arg_ptr;
-         IND->ctrl_status |= bit_flags->set;
-         IND->ctrl_status &= ~bit_flags->clear;
-         IND_write_reg(IND, R_GPIO_CTRL_ADDR, (IND->ctrl_status));
-         return 0;
-      }
-
       case IND_USER_SET_INTERRUPT:
          if (arg == ENABLE_INTERRUPT)
+            // enable and clear pending interrupt.
             IND_write_reg(IND, R_INTERRUPT_ADDR, K_CLEAR_INTERRUPT);
          else
             IND_write_reg(IND, R_INTERRUPT_ADDR, K_DISABLE_INTERRUPT);
 
          return 0;
 
-      case IND_USER_GET_SEM:
-         ret = atomic_read(&IND->semaphore);
-         if (copy_to_user(arg_ptr, &ret, sizeof(u32))) {
-            return -EFAULT;
-         }
-         return 0;
-
-      case IND_USER_SET_SEM:
-         atomic_set(&IND->semaphore, arg);
-         return 0;
-
       case IND_USER_REG_DEBUG:
-
          if (copy_from_user(&debug_cmd, arg_ptr, sizeof(debug_cmd))) {
             printk(KERN_DEBUG "IND_REG_DEBUG: copy failed\n");
 
@@ -326,30 +395,44 @@ static long IND_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
          if (copy_to_user(arg_ptr, &debug_cmd, sizeof(debug_cmd))) {
             return -EFAULT;
          }
-        return 0;
 
-      case IND_USER_FPGA_VERSION:
-
-         val = IND_read_reg(IND,R_FPGA_VERSION_ADDR);
-         if ((val & 0xffff0000) != 0xaaaa0000) {
-            printk(KERN_DEBUG "<%s> : Read version failed !!!, read = 0x%x\n",MODULE_NAME,val);
-            return -EFAULT;
-         }
-         val &=0x0000ffff;
-
-         if (copy_to_user(arg_ptr, &val, sizeof(u32))) {
-            return -EFAULT;
-         }
          return 0;
 
+      case IND_USER_FPGA_VERSION:
+      {
+         struct IND_fpga_version_struct fpga_version;
 
-      case IND_USER_READ_MAXMIN:
-         ret = IND_Maxmin_Read(IND, arg_ptr);
-         return ret;
+         val = IND_read_reg(IND, R_FPGA_VERSION_ADDR);
+         if ((val & 0xffff0000) != 0xaaaa0000) {
+            printk(KERN_DEBUG "<%s> : Read FPGA version failed !!!, read = 0x%08X\n", MODULE_NAME, val);
+//            return -EFAULT;
+         }
+
+         fpga_version._reserved_0 = 0;
+         fpga_version.major = (val >> 8) & 0xff;
+         fpga_version.minor = val & 0xff;
+
+         if (copy_to_user(arg_ptr, &fpga_version, sizeof(fpga_version))) {
+            return -EFAULT;
+         }
+
+         return 0;
+      }
+
+      case IND_USER_ADC_OFFSET_SET:
+	      IND_write_reg(IND, R_ADC_OFFSET, arg);
+	      return 0;
+
+      case IND_USER_ADC_OFFSET_GET:
+	      val = IND_read_reg(IND, R_ADC_OFFSET);
+	      if (copy_to_user(arg_ptr, &val, sizeof(val)))
+		      return -EFAULT;
+	      return 0;
 
       default:
-         break;
-   }
+	      break;
+
+   } // switch
 
    return ret;
 }
@@ -376,31 +459,54 @@ static unsigned int IND_poll(struct file *filp, poll_table *ptp)
  **/
 static irqreturn_t IND_isr(int irq, void *data)
 {
-   struct IND_drvdata *IND = data;
+	struct IND_drvdata *IND = data;
+	struct IND_capture_info *capture_info;
+	uint32_t int_status;
 
-   spin_lock(&IND->lock);
-
-   IND->int_status = IND_read_reg(IND, R_IND_STATUS) & (BIT_S2MM_ERR|BIT_MM2S_RD_CMPLT|BIT_MM2S_ERR);
-
-   // clear interrupt
-   IND_write_reg(IND, R_INTERRUPT_ADDR,K_CLEAR_INTERRUPT);
-
-   atomic_inc(&IND->irq_count);
-   atomic_inc(&IND->semaphore);
-
-   // wake up the irq wait queue to notify processes using select/poll/epoll.
-   wake_up_interruptible(&IND->irq_wait_queue);
+	spin_lock(&IND->lock);
 
 #if 1 //BJS DEBUG
-    IND->led_status ^= LED_SPARE;
-    IND_write_reg(IND, R_GPIO_LED_ADDR, (IND->led_status));
+	IND->led_status ^= LED_PPS_OK;
+	IND_write_reg(IND, R_GPIO_LED_ADDR, (IND->led_status));
 #endif
 
-//   IND_write_reg(IND, R_INTERRUPT_ADDR,K_DISABLE_INTERRUPT);
+	// clear interrupt
+	IND_write_reg(IND, R_INTERRUPT_ADDR,K_CLEAR_INTERRUPT);
 
-   spin_unlock(&IND->lock);
+	atomic_inc(&IND->irq_count);
+	atomic_inc(&IND->semaphore);
 
-   return IRQ_HANDLED;
+	int_status = IND_read_reg(IND, R_IND_STATUS) & (BIT_S2MM_ERR | BIT_MM2S_RD_CMPLT | BIT_MM2S_ERR);
+	IND->int_status = int_status;
+
+	// which bank has been captured?
+	capture_info = &IND->capture_info[IND->bank];
+
+	/*
+	 *  fill out capture_info structure
+	 */
+	getnstimeofday(&capture_info->irq_time);
+	capture_info->int_status = int_status;
+	capture_info->irq_count = (uint32_t)atomic_read(&IND->irq_count);
+	capture_info->semaphore = (uint32_t)atomic_read(&IND->semaphore);
+	capture_info->adc_clock_count_per_pps = IND_read_reg(IND, R_CLOCK_COUNT_PER_PPS_ADDR);
+	capture_info->bank = IND->bank;
+	_ind_maxmin_read(&capture_info->maxmin_normal, IND, R_IND_MAXMIN_NORMAL_BASE);
+	_ind_maxmin_read(&capture_info->maxmin_squared, IND, R_IND_MAXMIN_SQUARED_BASE);
+
+#if USE_PGPROT_CACHED
+	/* dma_sync_single_for_cpu(dev, dma_handle, size, direction); */
+	dma_sync_single_for_cpu(NULL, IND->dma_handle, DMA_LENGTH, DMA_BIDIRECTIONAL);
+#endif
+
+	// wake up the irq wait queue to notify processes using select/poll/epoll.
+	wake_up_interruptible(&IND->irq_wait_queue);
+
+//	IND_write_reg(IND, R_INTERRUPT_ADDR,K_DISABLE_INTERRUPT);
+
+	spin_unlock(&IND->lock);
+
+	return IRQ_HANDLED;
 }
 
 static const struct file_operations IND_fops = {
@@ -446,6 +552,8 @@ static int IND_probe(struct platform_device *pdev)
 
    if (IS_ERR(IND->base))
       return PTR_ERR(IND->base);
+
+   IND->bank = 0;
 
    // setup fgpa
    IND_write_reg(IND, R_MODE_CONFIG_ADDR, FPGA_RESET);
@@ -526,6 +634,8 @@ static int IND_probe(struct platform_device *pdev)
    //
    // allocate mmap area
    //
+#if USE_DMA_ALLOC_COHERENT
+
    IND->dma_addr = dma_alloc_coherent(NULL, DMA_LENGTH, &IND->dma_handle, GFP_KERNEL);
 
    dev_info(&pdev->dev, "dma_addr = 0x%x, dma_handle = 0x%x\n",(u32)IND->dma_addr,(u32)IND->dma_handle);
@@ -538,6 +648,43 @@ static int IND_probe(struct platform_device *pdev)
       goto failed8;
    }
    dev_info(&pdev->dev, "Successfully allocated dma memory\n");
+
+#elif USE_DMA_ALLOC_NONCOHERENT
+
+   IND->dma_addr = dma_alloc_noncoherent(NULL, DMA_LENGTH, &IND->dma_handle, GFP_KERNEL);
+
+   dev_info(&pdev->dev, "dma_addr = 0x%x, dma_handle = 0x%x\n",(u32)IND->dma_addr,(u32)IND->dma_handle);
+   dev_info(&pdev->dev, "IND base = 0x%x\n",(u32)IND->base);
+
+   if (!IND->dma_addr) {
+      printk(KERN_ERR "<%s> Error: allocating dma memory failed\n", MODULE_NAME);
+
+      ret = -ENOMEM;
+      goto failed8;
+   }
+   dev_info(&pdev->dev, "Successfully allocated dma memory\n");
+
+#else
+
+   /* dma_handle = dma_map_single(dev, addr, size, direction); */
+   IND->dma_handle = dma_map_single(NULL, NULL, DMA_LENGTH, DMA_BIDIRECTIONAL);
+
+//   dev_info(&pdev->dev, "dma_addr = 0x%x, dma_handle = 0x%x\n",(u32)IND->dma_addr,(u32)IND->dma_handle);
+//   dev_info(&pdev->dev, "dma_addr   = 0x%x\n",(u32)IND->dma_addr);
+   dev_info(&pdev->dev, "dma_handle = 0x%x\n",(u32)IND->dma_handle);
+   dev_info(&pdev->dev, "IND base   = 0x%x\n",(u32)IND->base);
+
+   /* dma_mapping_error(dev, dma_handle) */
+   if (dma_mapping_error(NULL, IND->dma_handle)) {
+      printk(KERN_ERR "<%s> Error: allocating dma memory failed\n", MODULE_NAME);
+      ret = -ENOMEM;
+      goto failed8;
+   }
+   dev_info(&pdev->dev, "Successfully allocated dma memory\n");
+
+#endif
+
+   init_waitqueue_head(&IND->irq_wait_queue);
 
    //platform_driver_register(pdev);
    dev_info(&pdev->dev, "Kutu IND finished loading driver\n");
@@ -575,9 +722,18 @@ static int IND_remove(struct platform_device *pdev)
    clk_unprepare(IND->clk);
 
    /* free mmap area */
+#if USE_DMA_ALLOC_COHERENT
    if (IND->dma_addr) {
       dma_free_coherent(NULL, DMA_LENGTH, IND->dma_addr, IND->dma_handle);
    }
+#elif USE_DMA_ALLOC_NONCOHERENT
+   if (IND->dma_addr) {
+      dma_free_noncoherent(NULL, DMA_LENGTH, IND->dma_addr, IND->dma_handle);
+   }
+#else
+   /* dma_unmap_single(dev, dma_handle, size, direction); */
+   dma_unmap_single(NULL, IND->dma_handle, DMA_LENGTH, DMA_BIDIRECTIONAL);
+#endif
 
    return 0;
 }
@@ -586,12 +742,12 @@ static struct platform_driver IND_driver = {
    .probe = IND_probe,
    .remove = IND_remove,
    .driver = {
-      .name = "IND",
-      .of_match_table = IND_of_match_table,
+   .name = "IND",
+   .of_match_table = IND_of_match_table,
    },
 };
 module_platform_driver(IND_driver);
 
-MODULE_AUTHOR("Greg Smart <Greg.Smart@kutu.com.au>");
+MODULE_AUTHOR("Successful Endeavours Pty Ltd <ray@successful.com.au>");
 MODULE_DESCRIPTION("IND Linux driver");
 MODULE_LICENSE("GPL v2");

@@ -80,6 +80,19 @@ static const uint16_t adv7511_csc_ycbcr_to_rgb[] = {
 	0x0000, 0x04ad, 0x087c, 0x1b77,
 };
 
+static const struct drm_display_mode hdmi_1080p60_mode = {
+	.clock = 148500,
+	.hdisplay = 1920,
+	.hsync_start = 1920 + 88,
+	.hsync_end = 1920 + 88 + 44,
+	.htotal = 2200,
+	.vdisplay = 1080,
+	.vsync_start = 1080 + 4,
+	.vsync_end = 1080 + 4 + 5,
+	.vtotal = 1125,
+	.vrefresh = 60,
+};
+
 struct kutu_hdmi_encoder {
 	struct drm_encoder_slave encoder;
 	struct drm_connector connector;
@@ -182,6 +195,7 @@ static void kutu_hdmi_encoder_disable(struct drm_encoder *encoder)
 		sfuncs->dpms(encoder, DRM_MODE_DPMS_OFF);
 }
 
+/*
 static void kutu_hdmi_encoder_mode_set(struct drm_encoder *encoder,
 	struct drm_crtc_state *crtc_state,
 	struct drm_connector_state *conn_state)
@@ -217,11 +231,12 @@ static void kutu_hdmi_encoder_mode_set(struct drm_encoder *encoder,
 
 	clk_set_rate(private->hdmi_clock, mode->clock * 1000);
 }
+*/
 
 static const struct drm_encoder_helper_funcs kutu_hdmi_encoder_helper_funcs = {
 	.enable = kutu_hdmi_encoder_enable,
 	.disable = kutu_hdmi_encoder_disable,
-	.atomic_mode_set = kutu_hdmi_encoder_mode_set,
+//	.atomic_mode_set = kutu_hdmi_encoder_mode_set,
 };
 
 static void kutu_hdmi_encoder_destroy(struct drm_encoder *encoder)
@@ -267,14 +282,27 @@ struct drm_encoder *kutu_hdmi_encoder_create(struct drm_device *dev)
 
 static int kutu_hdmi_connector_get_modes(struct drm_connector *connector)
 {
-	struct drm_encoder *encoder = connector_to_encoder(connector);
-	const struct drm_encoder_slave_funcs *sfuncs = get_slave_funcs(encoder);
-	int count = 0;
+//	struct drm_encoder *encoder = connector_to_encoder(connector);
+//	const struct drm_encoder_slave_funcs *sfuncs = get_slave_funcs(encoder);
+	int ret = 0;
 
-	if (sfuncs && sfuncs->get_modes)
+/*	if (sfuncs && sfuncs->get_modes)
 		count += sfuncs->get_modes(encoder, connector);
 
-	return count;
+	return count;*/
+
+//	ret = drm_add_modes_noedid(connector, 1920, 1080);
+
+   pr_err("kutu_hdmi get_modes has %d modes\n",ret);
+
+   // return 0;
+
+	/* And prefer a mode pretty much anyone can handle */
+	drm_set_preferred_mode(connector, 1920, 1080);
+
+ //  return 0;
+
+  return 1;
 }
 
 static int kutu_hdmi_connector_mode_valid(struct drm_connector *connector,
