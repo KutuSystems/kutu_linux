@@ -415,6 +415,13 @@ config IND
 	help
 	  Choose this if you have a SEPL IND system.
 
+config MSP430_SBW
+	tristate "MSP430 SBW support"
+	depends on HAS_IOMEM
+	select GENERIC_IRQ_CHIP
+	help
+	  Choose this if you have a MSP430 with SBW inferface.
+
 config LSI_CAPTURE
 	tristate "LSI_CAPTURE support"
 	depends on ARCH_ZYNQ || COMPILE_TEST

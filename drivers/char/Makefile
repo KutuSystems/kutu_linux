@@ -32,6 +32,7 @@ obj-$(CONFIG_XILINX_DEVCFG)	+= xilinx_devcfg.o
 obj-$(CONFIG_HAWK_FOS)	+= fos/
 obj-$(CONFIG_GR1000)	+= gr1000/
 obj-$(CONFIG_IND)	+= IND/
+obj-$(CONFIG_MSP430_SBW)	+= MSP430_SBW/
 obj-$(CONFIG_LSI_CAPTURE)	+= LSI_Capture/
 obj-$(CONFIG_LXS_SWIFT)	+= LXS_Swift/
 ifeq ($(CONFIG_GENERIC_NVRAM),y)
