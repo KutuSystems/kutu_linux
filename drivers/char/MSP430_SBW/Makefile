@@ -1,0 +1,2 @@
+MSP430-SBW-drv-y := MSP430-SBW.o
+obj-$(CONFIG_MSP430_SBW) += MSP430-SBW-drv.o
