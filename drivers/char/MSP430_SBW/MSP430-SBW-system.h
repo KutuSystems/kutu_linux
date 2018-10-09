@@ -94,22 +94,13 @@ struct MSP430_SBW_drvdata {
    struct class *class;
    int irq;
    atomic_t irq_count;
-   int dma_block_count;
    struct clk *clk;
-   volatile bool dma_done;
-   volatile int error_status;
    bool is_open;
    spinlock_t lock;
    void __iomem *base;
-   uint32_t config_state;
-   uint32_t int_status;
-   atomic_t semaphore;
-   char *dma_addr;
-   dma_addr_t dma_handle;
+   uint8_t tclkState;
    struct list_head dev_list;
    wait_queue_head_t irq_wait_queue;
-   struct MSP430_SBW_cmd_struct command;
-   uint32_t bank;
 };
 
 static inline void MSP430_SBW_write_reg(struct MSP430_SBW_drvdata *MSP430_SBW, size_t reg, uint32_t val)

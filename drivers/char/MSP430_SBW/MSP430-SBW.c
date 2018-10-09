@@ -22,6 +22,7 @@
 
 #include "MSP430-SBW.h"
 #include "MSP430-SBW-system.h"
+#include "SBWLowLevel.h"
 
 #define DRIVER_NAME "MSP430-SBW"
 #define MODULE_NAME "MSP430-SBW"
@@ -70,10 +71,6 @@ static long MSP430_SBW_ioctl(struct file *filp, unsigned int cmd, unsigned long 
    //printk(KERN_DEBUG "<%s> ioctl: entered MSP430_SBW_ioctl\n", MODULE_NAME);
 
    switch (cmd) {
-      /*
-       * time critical IOCTLs first (assumes switch statement is executed in order).
-       */
-
 
       case MSP430_SBW_USER_SETDIR:
          MSP430_SBW_write_reg(MSP430_SBW, R_DIRECTION_ADDR, arg);
@@ -115,9 +112,56 @@ static long MSP430_SBW_ioctl(struct file *filp, unsigned int cmd, unsigned long 
          if (copy_to_user(arg_ptr, &debug_cmd, sizeof(debug_cmd))) {
             return -EFAULT;
          }
-
          return 0;
 
+      case MSP430_SBW_USER_RELEASE:
+         SBWRelease(MSP430_SBW);
+         return 0;
+
+      case MSP430_SBW_USER_RESETTAP:
+         SBWResetTAP(MSP430_SBW);
+         return 0;
+
+      case MSP430_SBW_USER_RESTART:
+         SBWRestart(MSP430_SBW);
+         return 0;
+
+      case MSP430_SBW_USER_START:
+         SBWStart(MSP430_SBW);
+         return 0;
+
+      case MSP430_SBW_USER_SHIFTIR:
+         val = SBWShiftIR(MSP430_SBW, arg);
+         if (copy_to_user(arg_ptr, &val, sizeof(val))) {
+            return -EFAULT;
+         }
+         return 0;
+
+      case MSP430_SBW_USER_SHIFTDR16:
+         val = SBWShiftDR16(MSP430_SBW, arg);
+         if (copy_to_user(arg_ptr, &val, sizeof(val))) {
+            return -EFAULT;
+         }
+         return 0;
+
+      case MSP430_SBW_USER_SHIFTDR20:
+         val = SBWShiftDR20(MSP430_SBW, arg);
+         if (copy_to_user(arg_ptr, &val, sizeof(val))) {
+            return -EFAULT;
+         }
+         return 0;
+
+      case MSP430_SBW_USER_TCLKHIGH:
+         SBWTCLKHigh(MSP430_SBW);
+         return 0;
+
+      case MSP430_SBW_USER_TCLKLOW:
+         SBWTCLKLow(MSP430_SBW);
+         return 0;
+
+      case MSP430_SBW_USER_UPDATEDR:
+         SBWUpdateDR(MSP430_SBW);
+         return 0;
 
       default:
 	      break;
@@ -206,8 +250,6 @@ static int MSP430_SBW_probe(struct platform_device *pdev)
    spin_lock_init(&MSP430_SBW->lock);
 
    MSP430_SBW->is_open = 0;
-   MSP430_SBW->dma_done = 0;
-   MSP430_SBW->error_status = 0;
    dev_info(&pdev->dev, "ioremap %pa to %p\n", &mem->start, MSP430_SBW->base);
 
    MSP430_SBW->clk = devm_clk_get(&pdev->dev, NULL);
